@@ -1,139 +1,155 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+export const maxDuration = 60
 
-function extractNumber(text: string, patterns: RegExp[]): number | null {
-  for (const p of patterns) {
-    const m = text.match(p)
-    if (m) {
-      const n = parseFloat(m[1].replace(/,/g, ''))
-      if (!isNaN(n)) return n
+// Multiple fetch strategies to bypass bot detection
+async function fetchWithStrategies(url: string): Promise<string> {
+  const strategies = [
+    // Strategy 1: Direct fetch with realistic browser headers
+    async () => {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': '"macOS"',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Upgrade-Insecure-Requests': '1',
+        },
+        signal: AbortSignal.timeout(20000),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.text()
+    },
+    // Strategy 2: Via AllOrigins proxy
+    async () => {
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(20000) })
+      if (!res.ok) throw new Error(`Proxy HTTP ${res.status}`)
+      const data = await res.json()
+      return data.contents || ''
+    },
+    // Strategy 3: Via corsproxy.io
+    async () => {
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`
+      const res = await fetch(proxyUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(20000),
+      })
+      if (!res.ok) throw new Error(`Proxy2 HTTP ${res.status}`)
+      return res.text()
+    },
+  ]
+
+  for (const strategy of strategies) {
+    try {
+      const html = await strategy()
+      if (html && html.length > 500) return html
+    } catch (e) {
+      continue
     }
   }
-  return null
+  throw new Error('All fetch strategies failed')
 }
 
-function extractText(text: string, patterns: RegExp[]): string | null {
-  for (const p of patterns) {
-    const m = text.match(p)
-    if (m) return m[1].trim()
-  }
-  return null
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#?\w+;/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+async function parseWithClaude(text: string, url: string) {
+  const prompt = `You are an expert aircraft acquisition analyst. Extract structured data from this aircraft listing page text.
+
+Return ONLY a valid JSON object with exactly these fields (use null for any field not found):
+{
+  "make": "manufacturer name e.g. Daher, Cessna, Piper",
+  "model": "model designation e.g. TBM 700C2, 172S, PA-46",
+  "year": 2006,
+  "serial_number": "serial number string",
+  "registration": "N-number e.g. N123AB",
+  "asking_price": 1500000,
+  "location": "city, state or airport",
+  "airframe_hours": 2450,
+  "engine_model": "engine model e.g. PT6A-64",
+  "engine_time": 1200,
+  "engine_program": "maintenance program e.g. ESP Gold, MSP Gold",
+  "prop_model": "propeller model",
+  "prop_time": 800,
+  "damage_history": "description or 'None reported'",
+  "annual_due": "date or description",
+  "seller_name": "seller or broker name",
+  "avionics_notes": "avionics equipment list"
+}
+
+Rules:
+- asking_price, airframe_hours, engine_time, prop_time, year must be numbers (integers), not strings
+- If a field is truly not mentioned, use null
+- Do not guess or invent data
+- For damage_history, if listing says no damage or clean history, write "None reported"
+- Return ONLY the JSON, no explanation, no markdown
+
+Listing URL: ${url}
+
+Listing text:
+${text.slice(0, 12000)}`
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  })
+
+  if (!res.ok) throw new Error('Claude API error')
+  const data = await res.json()
+  const raw = data.content?.[0]?.text || '{}'
+  const clean = raw.replace(/```json|```/g, '').trim()
+  return JSON.parse(clean)
 }
 
 function confidence(value: any): 'high' | 'medium' | 'low' | 'missing' {
   if (value === null || value === undefined || value === '') return 'missing'
-  return 'medium'
+  return 'high'
 }
 
-function parseAircraftFromText(text: string, url: string) {
-  const t = text.replace(/\s+/g, ' ')
-
-  // Price
-  const asking_price = extractNumber(t, [
-    /(?:asking|list|sale)\s*(?:price)?[:\s]*\$?([\d,]+)/i,
-    /\$\s*([\d,]+)\s*(?:USD|usd)?(?:\s|$)/,
-    /price[:\s]+\$?([\d,]+)/i,
-  ])
-
-  // Year/Make/Model from page title or heading patterns
-  const year = extractNumber(t, [
-    /\b(19[5-9]\d|20[0-2]\d)\b(?=.*(?:TBM|Cessna|Piper|Beechcraft|Cirrus|Mooney|Commander|King Air|Citation|Pilatus|Socata|Diamond|Eclipse))/i,
-    /^(\d{4})\s+(?:TBM|Cessna|Piper)/im,
-  ])
-
-  const make = extractText(t, [
-    /(Cessna|Piper|Beechcraft|Cirrus|Mooney|Socata|TBM|Daher|Pilatus|Diamond|Eclipse|Commander|Hawker|Learjet|Gulfstream|Dassault|Bombardier|Embraer)/i,
-  ])
-
-  const model = extractText(t, [
-    /(?:TBM|Cessna|Piper|Beechcraft|Cirrus|Pilatus|Diamond)\s+([\w\d\-\/]+(?:\s[\w\d\-]+)?)/i,
-    /model[:\s]+([\w\d\s\-]+?)(?:\n|,|\.)/i,
-  ])
-
-  const serial_number = extractText(t, [
-    /(?:serial|s\/n|sn)[:\s#]*([A-Z0-9\-]{4,12})/i,
-    /serial\s*number[:\s]*([A-Z0-9\-]{4,12})/i,
-  ])
-
-  const registration = extractText(t, [
-    /(?:reg(?:istration)?|tail)[:\s#]*([A-Z0-9\-]{4,8})/i,
-    /\b(N\d{1,5}[A-Z]{0,2})\b/,
-  ])
-
-  const airframe_hours = extractNumber(t, [
-    /(?:total\s+time|TTSN|TT|airframe\s+hours?|total\s+airframe)[:\s]*([\d,]+)/i,
-    /(\d{1,5})\s*(?:hrs?|hours?)(?:\s+total|\s+TT)/i,
-  ])
-
-  const engine_model = extractText(t, [
-    /(?:engine\s+model|powerplant)[:\s]*([\w\d\s\-]+?)(?:\n|,|Serial)/i,
-    /(PT6[A-Z\-\d]+|IO-[\d]+|TIO-[\d]+|TSIO-[\d]+|Continental\s[\w\d]+|Lycoming\s[\w\d]+)/i,
-  ])
-
-  const engine_time = extractNumber(t, [
-    /(?:engine\s+time|SMOH|time\s+since\s+overhaul|TSN)[:\s]*([\d,]+)/i,
-    /SMOH[:\s]*([\d,]+)/i,
-  ])
-
-  const engine_program = extractText(t, [
-    /(?:engine\s+program|maintenance\s+program|ESP|MSP|TAP|JSSI)[:\s]*([\w\s\-]+?)(?:\n|,|\.)/i,
-    /(ESP Gold|MSP Gold|TAP Blue|JSSI|Pratt.*program)/i,
-  ])
-
-  const prop_model = extractText(t, [
-    /(?:propeller|prop)\s+(?:model)?[:\s]*([\w\d\s\-]+?)(?:\n|,|Serial)/i,
-  ])
-
-  const prop_time = extractNumber(t, [
-    /(?:prop|propeller)\s+(?:time|hours?)[:\s]*([\d,]+)/i,
-  ])
-
-  const location = extractText(t, [
-    /(?:location|based\s+at|airport)[:\s]*([A-Za-z\s,]+?)(?:\n|,\s*\d)/i,
-    /located\s+(?:in|at)\s+([A-Za-z\s,]+?)(?:\.|,|\n)/i,
-  ])
-
-  const seller_name = extractText(t, [
-    /(?:contact|seller|broker|dealer)[:\s]*([A-Za-z\s]+?)(?:\n|phone|email|\d)/i,
-    /(?:listed\s+by|offered\s+by)[:\s]*([A-Za-z\s]+?)(?:\n|\.)/i,
-  ])
-
-  const damage_history = extractText(t, [
-    /(?:damage\s+history|accident\s+history)[:\s]*([\w\s,\.]+?)(?:\n|\.|;)/i,
-    /(no\s+known\s+damage|no\s+accidents?|clean\s+history|damage\s+free)/i,
-  ])
-
-  const annual_due = extractText(t, [
-    /(?:annual\s+due|next\s+annual|inspection\s+due)[:\s]*([\w\s\d\/\-]+?)(?:\n|,|\.)/i,
-  ])
-
-  const avionics_notes = extractText(t, [
-    /(?:avionics|panel|glass\s+cockpit)[:\s]*([\w\s,\.\-]+?)(?:\n\n|\.(?:\s|$))/i,
-  ])
-
-  return {
-    make:           { value: make,          confidence: confidence(make) },
-    model:          { value: model,         confidence: confidence(model) },
-    year:           { value: year,          confidence: confidence(year) },
-    serial_number:  { value: serial_number, confidence: confidence(serial_number) },
-    registration:   { value: registration,  confidence: confidence(registration) },
-    asking_price:   { value: asking_price,  confidence: confidence(asking_price) },
-    location:       { value: location,      confidence: confidence(location) },
-    airframe_hours: { value: airframe_hours,confidence: confidence(airframe_hours) },
-    engine_model:   { value: engine_model,  confidence: confidence(engine_model) },
-    engine_time:    { value: engine_time,   confidence: confidence(engine_time) },
-    engine_program: { value: engine_program,confidence: confidence(engine_program) },
-    prop_model:     { value: prop_model,    confidence: confidence(prop_model) },
-    prop_time:      { value: prop_time,     confidence: confidence(prop_time) },
-    damage_history: { value: damage_history,confidence: confidence(damage_history) },
-    annual_due:     { value: annual_due,    confidence: confidence(annual_due) },
-    seller_name:    { value: seller_name,   confidence: confidence(seller_name) },
-    avionics_notes: { value: avionics_notes,confidence: confidence(avionics_notes) },
-    source_url:     { value: url,           confidence: 'high' as const },
-    source_site:    { value: new URL(url).hostname.replace('www.',''), confidence: 'high' as const },
+function buildParsed(fields: Record<string, any>, url: string) {
+  const keys = [
+    'make','model','year','serial_number','registration','asking_price',
+    'location','airframe_hours','engine_model','engine_time','engine_program',
+    'prop_model','prop_time','damage_history','annual_due','seller_name','avionics_notes'
+  ]
+  const result: Record<string, any> = {
+    source_url:  { value: url, confidence: 'high' },
+    source_site: { value: new URL(url).hostname.replace('www.',''), confidence: 'high' },
   }
+  for (const k of keys) {
+    result[k] = { value: fields[k] ?? null, confidence: confidence(fields[k]) }
+  }
+  return result
 }
 
 export async function POST(req: NextRequest) {
@@ -141,43 +157,38 @@ export async function POST(req: NextRequest) {
     const { url } = await req.json()
     if (!url) return NextResponse.json({ error: 'URL required' }, { status: 400 })
 
-    // Fetch the listing page
+    // Step 1: Fetch the page
     let html = ''
     let snapshot = ''
+    let fetchWarning = ''
+
     try {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        signal: AbortSignal.timeout(15000),
-      })
-      html = await res.text()
-      // Strip HTML to get readable text
-      snapshot = html
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-        .slice(0, 8000) // Store first 8k chars
-    } catch (fetchErr) {
-      // If we can't fetch, return empty parse with error hint
-      return NextResponse.json({
-        parsed: parseAircraftFromText('', url),
-        snapshot: '',
-        warning: 'Could not fetch listing page — some sites block automated access. Enter fields manually.',
-      })
+      html = await fetchWithStrategies(url)
+      snapshot = htmlToText(html).slice(0, 15000)
+    } catch (e) {
+      fetchWarning = 'Could not fetch listing page automatically. Fields extracted from URL only.'
     }
 
-    const parsed = parseAircraftFromText(snapshot, url)
+    // Step 2: Parse with Claude if we have content
+    let parsed: Record<string, any>
+    if (snapshot.length > 200 && process.env.ANTHROPIC_API_KEY) {
+      try {
+        const fields = await parseWithClaude(snapshot, url)
+        parsed = buildParsed(fields, url)
+      } catch (e) {
+        // Fall back to empty parse
+        parsed = buildParsed({}, url)
+      }
+    } else {
+      parsed = buildParsed({}, url)
+    }
 
-    return NextResponse.json({ parsed, snapshot })
+    return NextResponse.json({
+      parsed,
+      snapshot: snapshot.slice(0, 8000),
+      ...(fetchWarning ? { warning: fetchWarning } : {}),
+    })
+
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
