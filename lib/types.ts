@@ -40,10 +40,19 @@ export interface Aircraft {
   prop_time: number | null
   // Avionics
   avionics_notes: string
+  autopilot: string
+  gps_nav: string
+  ads_b: string
+  taws: string
+  traffic_system: string
+  weather_system: string
+  engine_monitor: string
   // Condition
   interior_notes: string
   exterior_notes: string
   damage_history: string
+  prop_strike_history: string
+  accident_history: string
   // Inspections
   annual_due: string
   inspection_notes: string

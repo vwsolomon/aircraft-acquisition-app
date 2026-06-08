@@ -29,6 +29,10 @@ function Field({ label, value, mono }: { label: string; value?: string | number 
   )
 }
 
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div className="section-title">{children}</div>
+}
+
 export default function AircraftPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -77,7 +81,6 @@ export default function AircraftPage() {
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Link href="/" style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
           <ArrowLeft size={14} /> Pipeline
@@ -86,9 +89,7 @@ export default function AircraftPage() {
 
       <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
         <div>
-          <h1 className="page-title">
-            {a.year} {a.make} {a.model}
-          </h1>
+          <h1 className="page-title">{a.year} {a.make} {a.model}</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
             <StatusBadge status={a.status} />
             {a.registration && (
@@ -103,7 +104,7 @@ export default function AircraftPage() {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {a.source_url && (
             <a href={a.source_url} target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ textDecoration: 'none' }}>
               <ExternalLink size={13} /> Listing
@@ -113,9 +114,7 @@ export default function AircraftPage() {
             <CheckSquare size={13} /> Diligence
           </Link>
           {!editing ? (
-            <button className="btn-primary" onClick={() => setEditing(true)}>
-              <Edit2 size={13} /> Edit
-            </button>
+            <button className="btn-primary" onClick={() => setEditing(true)}><Edit2 size={13} /> Edit</button>
           ) : (
             <button className="btn-primary" onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
@@ -128,18 +127,11 @@ export default function AircraftPage() {
       </div>
 
       {editing ? (
-        /* Edit mode */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Status / Deal */}
           <div className="card">
-            <div className="section-title">Deal Info</div>
+            <SectionTitle>Deal Info</SectionTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <label className="label">Status</label>
-                <select className="input" value={fields.status} onChange={set('status')}>
-                  {STATUSES.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
+              <div><label className="label">Status</label><select className="input" value={fields.status} onChange={set('status')}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></div>
               <div><label className="label">Asking Price</label><input className="input" value={fields.asking_price ?? ''} onChange={set('asking_price')} /></div>
               <div><label className="label">Make</label><input className="input" value={fields.make ?? ''} onChange={set('make')} /></div>
               <div><label className="label">Model</label><input className="input" value={fields.model ?? ''} onChange={set('model')} /></div>
@@ -153,13 +145,13 @@ export default function AircraftPage() {
           </div>
 
           <div className="card">
-            <div className="section-title">Airframe & Engines</div>
+            <SectionTitle>Airframe & Engines</SectionTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div><label className="label">Airframe Hours</label><input className="input" value={fields.airframe_hours ?? ''} onChange={set('airframe_hours')} /></div>
               <div><label className="label">Cycles</label><input className="input" value={fields.cycles ?? ''} onChange={set('cycles')} /></div>
               <div><label className="label">Engine Model</label><input className="input" value={fields.engine_model ?? ''} onChange={set('engine_model')} /></div>
               <div><label className="label">Engine Serial</label><input className="input" value={fields.engine_serial ?? ''} onChange={set('engine_serial')} /></div>
-              <div><label className="label">Engine Time</label><input className="input" value={fields.engine_time ?? ''} onChange={set('engine_time')} /></div>
+              <div><label className="label">Engine Time (SMOH)</label><input className="input" value={fields.engine_time ?? ''} onChange={set('engine_time')} /></div>
               <div><label className="label">Engine Program</label><input className="input" value={fields.engine_program ?? ''} onChange={set('engine_program')} /></div>
               <div><label className="label">Prop Model</label><input className="input" value={fields.prop_model ?? ''} onChange={set('prop_model')} /></div>
               <div><label className="label">Prop Time</label><input className="input" value={fields.prop_time ?? ''} onChange={set('prop_time')} /></div>
@@ -167,23 +159,37 @@ export default function AircraftPage() {
           </div>
 
           <div className="card">
-            <div className="section-title">Condition & Notes</div>
+            <SectionTitle>Avionics</SectionTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div><label className="label">Damage History</label><input className="input" value={fields.damage_history ?? ''} onChange={set('damage_history')} /></div>
+              <div><label className="label">Autopilot</label><input className="input" value={fields.autopilot ?? ''} onChange={set('autopilot')} placeholder="e.g. Garmin GFC 700, KAP 140" /></div>
+              <div><label className="label">GPS / Nav System</label><input className="input" value={fields.gps_nav ?? ''} onChange={set('gps_nav')} placeholder="e.g. Garmin GTN 750Xi" /></div>
+              <div><label className="label">ADS-B</label><input className="input" value={fields.ads_b ?? ''} onChange={set('ads_b')} placeholder="e.g. In/Out, Out only, None" /></div>
+              <div><label className="label">TAWS / Terrain</label><input className="input" value={fields.taws ?? ''} onChange={set('taws')} placeholder="e.g. Garmin TAWS-B" /></div>
+              <div><label className="label">Traffic System</label><input className="input" value={fields.traffic_system ?? ''} onChange={set('traffic_system')} placeholder="e.g. Garmin TAS, Avidyne TAS600" /></div>
+              <div><label className="label">Weather System</label><input className="input" value={fields.weather_system ?? ''} onChange={set('weather_system')} placeholder="e.g. XM Weather, Stormscope" /></div>
+              <div><label className="label">Engine Monitor</label><input className="input" value={fields.engine_monitor ?? ''} onChange={set('engine_monitor')} placeholder="e.g. JPI EDM 930, Garmin EIS" /></div>
+            </div>
+            <div style={{ marginTop: 16 }}><label className="label">Additional Avionics Notes</label><textarea className="input" value={fields.avionics_notes ?? ''} onChange={set('avionics_notes')} placeholder="Any other avionics equipment..." /></div>
+          </div>
+
+          <div className="card">
+            <SectionTitle>Condition & History</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div><label className="label">Damage History</label><input className="input" value={fields.damage_history ?? ''} onChange={set('damage_history')} placeholder="e.g. None reported" /></div>
+              <div><label className="label">Prop Strike History</label><input className="input" value={fields.prop_strike_history ?? ''} onChange={set('prop_strike_history')} placeholder="e.g. None, or describe event" /></div>
+              <div><label className="label">Accident / Incident History</label><input className="input" value={fields.accident_history ?? ''} onChange={set('accident_history')} placeholder="e.g. NTSB clean, or describe" /></div>
               <div><label className="label">Annual Due</label><input className="input" value={fields.annual_due ?? ''} onChange={set('annual_due')} /></div>
               <div><label className="label">Next Action</label><input className="input" value={fields.next_action ?? ''} onChange={set('next_action')} /></div>
               <div><label className="label">Next Action Date</label><input className="input" type="date" value={fields.next_action_date ?? ''} onChange={set('next_action_date')} /></div>
             </div>
-            <div style={{ marginTop: 16 }}><label className="label">Avionics Notes</label><textarea className="input" value={fields.avionics_notes ?? ''} onChange={set('avionics_notes')} /></div>
-            <div style={{ marginTop: 12 }}><label className="label">Interior Notes</label><textarea className="input" value={fields.interior_notes ?? ''} onChange={set('interior_notes')} /></div>
+            <div style={{ marginTop: 16 }}><label className="label">Interior Notes</label><textarea className="input" value={fields.interior_notes ?? ''} onChange={set('interior_notes')} /></div>
             <div style={{ marginTop: 12 }}><label className="label">Notes</label><textarea className="input" value={fields.notes ?? ''} onChange={set('notes')} /></div>
           </div>
         </div>
       ) : (
-        /* View mode */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div className="card">
-            <div className="section-title">Deal Info</div>
+            <SectionTitle>Deal Info</SectionTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
               <Field label="Make" value={a.make} />
               <Field label="Model" value={a.model} />
@@ -198,7 +204,7 @@ export default function AircraftPage() {
           </div>
 
           <div className="card">
-            <div className="section-title">Airframe & Engines</div>
+            <SectionTitle>Airframe & Engines</SectionTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
               <Field label="Airframe Hours" value={a.airframe_hours} />
               <Field label="Cycles" value={a.cycles} />
@@ -212,18 +218,33 @@ export default function AircraftPage() {
           </div>
 
           <div className="card">
-            <div className="section-title">Condition</div>
+            <SectionTitle>Avionics</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+              <Field label="Autopilot" value={a.autopilot} />
+              <Field label="GPS / Nav System" value={a.gps_nav} />
+              <Field label="ADS-B" value={a.ads_b} />
+              <Field label="TAWS / Terrain" value={a.taws} />
+              <Field label="Traffic System" value={a.traffic_system} />
+              <Field label="Weather System" value={a.weather_system} />
+              <Field label="Engine Monitor" value={a.engine_monitor} />
+              <Field label="Additional Avionics" value={a.avionics_notes} />
+            </div>
+          </div>
+
+          <div className="card">
+            <SectionTitle>Condition & History</SectionTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               <Field label="Damage History" value={a.damage_history} />
+              <Field label="Prop Strike History" value={a.prop_strike_history} />
+              <Field label="Accident / Incident History" value={a.accident_history} />
               <Field label="Annual Due" value={a.annual_due} />
-              <Field label="Avionics" value={a.avionics_notes} />
               <Field label="Interior" value={a.interior_notes} />
             </div>
           </div>
 
           {(a.next_action || a.notes) && (
             <div className="card">
-              <div className="section-title">Actions & Notes</div>
+              <SectionTitle>Actions & Notes</SectionTitle>
               {a.next_action && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
                   <Clock size={13} style={{ color: '#38bdf8' }} />

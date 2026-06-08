@@ -95,7 +95,16 @@ Return ONLY a valid JSON object with exactly these fields (use null for any fiel
   "damage_history": "description or 'None reported'",
   "annual_due": "date or description",
   "seller_name": "seller or broker name",
-  "avionics_notes": "avionics equipment list"
+  "autopilot": "autopilot system e.g. Garmin GFC 700",
+  "gps_nav": "GPS/nav system e.g. Garmin GTN 750Xi",
+  "ads_b": "ADS-B status e.g. In/Out, Out only, None",
+  "taws": "terrain awareness system",
+  "traffic_system": "traffic system e.g. Garmin TAS605",
+  "weather_system": "weather system e.g. XM Weather, Stormscope",
+  "engine_monitor": "engine monitor e.g. JPI EDM 930",
+  "avionics_notes": "any other avionics equipment",
+  "prop_strike_history": "prop strike history or None reported",
+  "accident_history": "accident or incident history or None reported"
 }
 
 Rules:

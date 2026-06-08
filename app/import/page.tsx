@@ -3,13 +3,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Aircraft, AircraftStatus } from '@/lib/types'
-import { Link2, Loader2, CheckCircle2, AlertCircle, Save, RefreshCw } from 'lucide-react'
+import { Link2, Loader2, AlertCircle, Save, RefreshCw } from 'lucide-react'
 
-type ParsedField = {
-  value: string | number | null
-  confidence: 'high' | 'medium' | 'low' | 'missing'
-}
-
+type ParsedField = { value: string | number | null; confidence: 'high' | 'medium' | 'low' | 'missing' }
 type ParsedAircraft = Partial<Record<keyof Aircraft, ParsedField>>
 
 const STATUSES: AircraftStatus[] = [
@@ -18,16 +14,52 @@ const STATUSES: AircraftStatus[] = [
 ]
 
 function ConfidenceDot({ confidence }: { confidence: string }) {
-  const colors: Record<string, string> = {
-    high: '#22c55e', medium: '#f59e0b', low: '#ef4444', missing: '#3d6080'
-  }
+  const colors: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#ef4444', missing: '#3d6080' }
+  return <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: colors[confidence] ?? '#3d6080', marginRight: 6, flexShrink: 0 }} title={confidence} />
+}
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <span style={{
-      display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
-      background: colors[confidence] ?? '#3d6080', marginRight: 6, flexShrink: 0
-    }} title={confidence} />
+    <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+      {children}
+    </div>
   )
 }
+
+const IMPORT_FIELDS = [
+  { section: 'Identity & Deal' },
+  { key: 'make', label: 'Make' },
+  { key: 'model', label: 'Model' },
+  { key: 'year', label: 'Year' },
+  { key: 'serial_number', label: 'Serial Number' },
+  { key: 'registration', label: 'Registration' },
+  { key: 'asking_price', label: 'Asking Price' },
+  { key: 'location', label: 'Location' },
+  { key: 'seller_name', label: 'Seller / Broker' },
+  { section: 'Airframe & Engines' },
+  { key: 'airframe_hours', label: 'Airframe Hours' },
+  { key: 'engine_model', label: 'Engine Model' },
+  { key: 'engine_time', label: 'Engine Time (SMOH)' },
+  { key: 'engine_program', label: 'Engine Program' },
+  { key: 'prop_model', label: 'Prop Model' },
+  { key: 'prop_time', label: 'Prop Time' },
+  { section: 'Avionics' },
+  { key: 'autopilot', label: 'Autopilot' },
+  { key: 'gps_nav', label: 'GPS / Nav System' },
+  { key: 'ads_b', label: 'ADS-B' },
+  { key: 'taws', label: 'TAWS / Terrain' },
+  { key: 'traffic_system', label: 'Traffic System' },
+  { key: 'weather_system', label: 'Weather System' },
+  { key: 'engine_monitor', label: 'Engine Monitor' },
+  { key: 'avionics_notes', label: 'Additional Avionics' },
+  { section: 'Condition & History' },
+  { key: 'damage_history', label: 'Damage History' },
+  { key: 'prop_strike_history', label: 'Prop Strike History' },
+  { key: 'accident_history', label: 'Accident / Incident History' },
+  { key: 'annual_due', label: 'Annual Due' },
+]
+
+const CRITICAL_FIELDS = ['serial_number','airframe_hours','engine_model','damage_history','annual_due','prop_strike_history','accident_history']
 
 export default function ImportPage() {
   const router = useRouter()
@@ -36,17 +68,16 @@ export default function ImportPage() {
   const [parsed, setParsed] = useState<ParsedAircraft | null>(null)
   const [rawSnapshot, setRawSnapshot] = useState('')
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const [saving, setSaving] = useState(false)
-
-  // Editable fields after parse
   const [fields, setFields] = useState<Partial<Aircraft>>({})
 
   async function handleImport() {
     if (!url.trim()) return
     setLoading(true)
     setError('')
+    setWarning('')
     setParsed(null)
-
     try {
       const res = await fetch('/api/import', {
         method: 'POST',
@@ -57,7 +88,7 @@ export default function ImportPage() {
       if (!res.ok) throw new Error(data.error || 'Import failed')
       setParsed(data.parsed)
       setRawSnapshot(data.snapshot || '')
-      // Pre-fill editable fields
+      if (data.warning) setWarning(data.warning)
       const flat: Partial<Aircraft> = { status: 'New Lead', source_url: url }
       for (const [k, v] of Object.entries(data.parsed)) {
         const key = k as keyof Aircraft
@@ -85,12 +116,7 @@ export default function ImportPage() {
       }
       const { data, error: err } = await supabase
         .from('aircraft')
-        .insert([{
-          ...fields,
-          raw_snapshot: rawSnapshot,
-          import_confidence: confidence,
-          updated_at: new Date().toISOString(),
-        }])
+        .insert([{ ...fields, raw_snapshot: rawSnapshot, import_confidence: confidence, updated_at: new Date().toISOString() }])
         .select()
         .single()
       if (err) throw err
@@ -102,10 +128,7 @@ export default function ImportPage() {
   }
 
   const missingCriticals = parsed
-    ? Object.entries(parsed).filter(([k, v]) =>
-        ['serial_number','airframe_hours','engine_model','damage_history','annual_due'].includes(k) &&
-        (v as ParsedField).confidence === 'missing'
-      )
+    ? Object.entries(parsed).filter(([k, v]) => CRITICAL_FIELDS.includes(k) && (v as ParsedField).confidence === 'missing')
     : []
 
   return (
@@ -117,20 +140,12 @@ export default function ImportPage() {
         </p>
       </div>
 
-      {/* URL Input */}
       <div className="card mb-6">
         <label className="label">Listing URL</label>
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <Link2 size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
-            <input
-              className="input"
-              style={{ paddingLeft: 34 }}
-              placeholder="https://www.controller.com/listings/..."
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleImport()}
-            />
+            <input className="input" style={{ paddingLeft: 34 }} placeholder="https://www.controller.com/listings/..." value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleImport()} />
           </div>
           <button className="btn-primary" onClick={handleImport} disabled={loading || !url.trim()}>
             {loading ? <Loader2 size={15} className="animate-spin" /> : 'Import'}
@@ -141,9 +156,13 @@ export default function ImportPage() {
             <AlertCircle size={14} /> {error}
           </div>
         )}
+        {warning && (
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <AlertCircle size={14} /> {warning}
+          </div>
+        )}
       </div>
 
-      {/* Missing criticals warning */}
       {missingCriticals.length > 0 && (
         <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
           <div style={{ fontWeight: 700, color: '#fbbf24', fontSize: 13, marginBottom: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -159,7 +178,6 @@ export default function ImportPage() {
         </div>
       )}
 
-      {/* Parsed fields review */}
       {parsed && (
         <div className="card mb-6">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -167,50 +185,32 @@ export default function ImportPage() {
             <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-dim)' }}>
               <span><ConfidenceDot confidence="high" />High</span>
               <span><ConfidenceDot confidence="medium" />Medium</span>
-              <span><ConfidenceDot confidence="low" />Low</span>
               <span><ConfidenceDot confidence="missing" />Missing</span>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {[
-              { key: 'make', label: 'Make' },
-              { key: 'model', label: 'Model' },
-              { key: 'year', label: 'Year' },
-              { key: 'serial_number', label: 'Serial Number' },
-              { key: 'registration', label: 'Registration' },
-              { key: 'asking_price', label: 'Asking Price' },
-              { key: 'location', label: 'Location' },
-              { key: 'airframe_hours', label: 'Airframe Hours' },
-              { key: 'engine_model', label: 'Engine Model' },
-              { key: 'engine_time', label: 'Engine Time' },
-              { key: 'engine_program', label: 'Engine Program' },
-              { key: 'prop_model', label: 'Prop Model' },
-              { key: 'prop_time', label: 'Prop Time' },
-              { key: 'damage_history', label: 'Damage History' },
-              { key: 'annual_due', label: 'Annual Due' },
-              { key: 'seller_name', label: 'Seller / Broker' },
-            ].map(({ key, label }) => {
-              const pf = parsed[key as keyof Aircraft] as ParsedField | undefined
+            {IMPORT_FIELDS.map((f, i) => {
+              if ('section' in f) return <SectionHeader key={i}>{f.section}</SectionHeader>
+              const pf = parsed[f.key as keyof Aircraft] as ParsedField | undefined
               const conf = pf?.confidence ?? 'missing'
               return (
-                <div key={key}>
+                <div key={f.key}>
                   <label className="label" style={{ display: 'flex', alignItems: 'center' }}>
-                    <ConfidenceDot confidence={conf} />{label}
+                    <ConfidenceDot confidence={conf} />{f.label}
                   </label>
                   <input
                     className="input"
-                    value={(fields[key as keyof Aircraft] as string) ?? ''}
-                    onChange={e => setFields(f => ({ ...f, [key]: e.target.value }))}
+                    value={(fields[f.key as keyof Aircraft] as string) ?? ''}
+                    onChange={e => setFields(flds => ({ ...flds, [f.key]: e.target.value }))}
                     placeholder={conf === 'missing' ? 'Not found in listing' : ''}
-                    style={{ borderColor: conf === 'missing' ? 'rgba(245,158,11,0.4)' : undefined }}
+                    style={{ borderColor: conf === 'missing' && CRITICAL_FIELDS.includes(f.key) ? 'rgba(245,158,11,0.4)' : undefined }}
                   />
                 </div>
               )
             })}
           </div>
 
-          {/* Status + Notes */}
           <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
               <label className="label">Pipeline Status</label>
@@ -241,15 +241,10 @@ export default function ImportPage() {
         </div>
       )}
 
-      {/* Manual entry option */}
       {!parsed && !loading && (
         <div style={{ textAlign: 'center', marginTop: 32 }}>
           <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>or</p>
-          <button className="btn-secondary" style={{ marginTop: 12 }}
-            onClick={() => {
-              setParsed({} as ParsedAircraft)
-              setFields({ status: 'New Lead' })
-            }}>
+          <button className="btn-secondary" style={{ marginTop: 12 }} onClick={() => { setParsed({} as ParsedAircraft); setFields({ status: 'New Lead' }) }}>
             Enter aircraft manually
           </button>
         </div>
