@@ -2,11 +2,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef } from 'react'
-import { LayoutDashboard, PlusCircle, BarChart3, CheckSquare, FileText } from 'lucide-react'
+import { LayoutDashboard, PlusCircle, BarChart3, CheckSquare, FileText, Search } from 'lucide-react'
 
 const links = [
   { href: '/', label: 'Pipeline', icon: LayoutDashboard },
   { href: '/import', label: 'Import', icon: PlusCircle },
+  { href: '/search', label: 'Search', icon: Search },
   { href: '/comparison', label: 'Compare', icon: BarChart3 },
   { href: '/diligence', label: 'Diligence', icon: CheckSquare },
   { href: '/mentor', label: 'Mentor', icon: FileText },
